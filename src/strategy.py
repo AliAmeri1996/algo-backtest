@@ -84,3 +84,35 @@ def rsi_strategy(df: pd.DataFrame, period: int = 14, oversold: int = 30, overbou
     df.dropna(inplace=True)
 
     return df
+
+
+
+def macd_strategy(df: pd.DataFrame, fast: int = 12, slow: int = 26, signal: int = 9) -> pd.DataFrame:
+    """
+    Generates buy/sell signals based on MACD crossover.
+
+    MACD Line = 12-day EMA minus 26-day EMA
+    Signal Line = 9-day EMA of MACD Line
+
+    Buy when MACD line crosses above signal line.
+    Sell when MACD line crosses below signal line.
+    """
+    df = df.copy()
+
+    # Calculate EMAs
+    ema_fast = df["Close"].ewm(span=fast, adjust=False).mean()
+    ema_slow = df["Close"].ewm(span=slow, adjust=False).mean()
+
+    # MACD line and signal line
+    df["MACD"] = ema_fast - ema_slow
+    df["MACD_Signal"] = df["MACD"].ewm(span=signal, adjust=False).mean()
+    df["MACD_Hist"] = df["MACD"] - df["MACD_Signal"]
+
+    # Generate signals
+    df["Signal"] = 0
+    df.loc[df["MACD"] > df["MACD_Signal"], "Signal"] = 1
+
+    df["Trade"] = df["Signal"].diff()
+    df.dropna(inplace=True)
+
+    return df
