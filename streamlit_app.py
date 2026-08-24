@@ -8,10 +8,9 @@ import matplotlib.pyplot as plt
 import yfinance as yf
 
 from data import fetch_price_data
-from strategy import moving_average_crossover, rsi_strategy
+from strategy import moving_average_crossover, rsi_strategy, macd_strategy
 from backtester import run_backtest
 from metrics import calculate_metrics
-from visualisation import plot_results
 
 st.set_page_config(page_title="Algo Backtest Engine", layout="wide")
 
@@ -26,18 +25,29 @@ end_date = st.sidebar.date_input("End Date", value=pd.to_datetime("2024-01-01"))
 initial_capital = st.sidebar.number_input("Initial Capital ($)", value=10000, step=1000)
 
 st.sidebar.markdown("---")
-strategy = st.sidebar.selectbox("Strategy", ["MA Crossover (Golden Cross)", "RSI"])
+strategy = st.sidebar.selectbox("Strategy", [
+    "MA Crossover (Golden Cross)",
+    "RSI",
+    "MACD"
+])
 
 # Strategy-specific params
 if strategy == "MA Crossover (Golden Cross)":
     st.sidebar.markdown("**MA Parameters**")
     short_window = st.sidebar.slider("Short MA (days)", min_value=10, max_value=100, value=50, step=5)
     long_window = st.sidebar.slider("Long MA (days)", min_value=50, max_value=300, value=200, step=10)
-else:
+
+elif strategy == "RSI":
     st.sidebar.markdown("**RSI Parameters**")
     rsi_period = st.sidebar.slider("RSI Period (days)", min_value=5, max_value=30, value=14, step=1)
     oversold = st.sidebar.slider("Oversold threshold", min_value=10, max_value=40, value=30, step=5)
     overbought = st.sidebar.slider("Overbought threshold", min_value=60, max_value=90, value=70, step=5)
+
+elif strategy == "MACD":
+    st.sidebar.markdown("**MACD Parameters**")
+    fast = st.sidebar.slider("Fast EMA (days)", min_value=5, max_value=20, value=12, step=1)
+    slow = st.sidebar.slider("Slow EMA (days)", min_value=20, max_value=50, value=26, step=1)
+    signal_window = st.sidebar.slider("Signal Line (days)", min_value=5, max_value=20, value=9, step=1)
 
 run_button = st.sidebar.button("Run Backtest", type="primary")
 
@@ -49,9 +59,14 @@ if run_button:
             if strategy == "MA Crossover (Golden Cross)":
                 df = moving_average_crossover(df, short_window=short_window, long_window=long_window)
                 strategy_label = f"MA Crossover ({short_window}/{long_window})"
-            else:
+
+            elif strategy == "RSI":
                 df = rsi_strategy(df, period=rsi_period, oversold=oversold, overbought=overbought)
                 strategy_label = f"RSI ({rsi_period}, {oversold}/{overbought})"
+
+            elif strategy == "MACD":
+                df = macd_strategy(df, fast=fast, slow=slow, signal=signal_window)
+                strategy_label = f"MACD ({fast}/{slow}/{signal_window})"
 
             df = run_backtest(df, initial_capital=float(initial_capital))
             metrics = calculate_metrics(df, initial_capital=float(initial_capital))
@@ -78,9 +93,6 @@ if run_button:
             if strategy == "MA Crossover (Golden Cross)":
                 ax1.plot(df.index, df["MA_short"], color="blue", linewidth=1, linestyle="--", label=f"{short_window}-day MA")
                 ax1.plot(df.index, df["MA_long"], color="red", linewidth=1, linestyle="--", label=f"{long_window}-day MA")
-            else:
-                # RSI panel below price
-                ax1.set_title("Price + Buy/Sell Signals")
 
             ax1.scatter(buys.index, buys["Close"], marker="^", color="green", s=100, zorder=5, label="Buy")
             ax1.scatter(sells.index, sells["Close"], marker="v", color="red", s=100, zorder=5, label="Sell")
@@ -88,7 +100,7 @@ if run_button:
             ax1.set_ylabel("Price ($)")
             st.pyplot(fig1)
 
-            # RSI chart (only for RSI strategy)
+            # --- RSI chart ---
             if strategy == "RSI":
                 st.subheader("RSI Indicator")
                 fig_rsi, ax_rsi = plt.subplots(figsize=(14, 2.5))
@@ -100,6 +112,26 @@ if run_button:
                 ax_rsi.set_ylabel("RSI")
                 ax_rsi.legend(loc="upper left")
                 st.pyplot(fig_rsi)
+
+            # --- MACD chart ---
+            if strategy == "MACD":
+                st.subheader("MACD Indicator")
+                fig_macd, (ax_m1, ax_m2) = plt.subplots(2, 1, figsize=(14, 4), sharex=True)
+
+                ax_m1.plot(df.index, df["MACD"], color="blue", linewidth=1, label="MACD")
+                ax_m1.plot(df.index, df["MACD_Signal"], color="red", linewidth=1, linestyle="--", label="Signal")
+                ax_m1.axhline(0, color="black", linewidth=0.5)
+                ax_m1.legend(loc="upper left")
+                ax_m1.set_ylabel("MACD")
+
+                ax_m2.bar(df.index, df["MACD_Hist"],
+                          color=["green" if v >= 0 else "red" for v in df["MACD_Hist"]],
+                          alpha=0.6, label="Histogram")
+                ax_m2.axhline(0, color="black", linewidth=0.5)
+                ax_m2.set_ylabel("Histogram")
+                ax_m2.legend(loc="upper left")
+
+                st.pyplot(fig_macd)
 
             # --- Equity curve ---
             st.subheader("Equity Curve")
